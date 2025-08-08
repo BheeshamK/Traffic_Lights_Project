@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Traffic Light — 2 Minute Cycle</title>
+<style>
+  :root{
+    --bg:#1265e0;
+    --box:#0d2221;
+    --off-shadow: rgba(0,0,0,0.6);
+    --size:120px;
+  }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background: linear-gradient(180deg,#506da8,#14202a);
+    font-family:system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;
+    color:#e6eef6;
+  }
+
+  .traffic-wrap{
+    display:flex;
+    gap:24px;
+    align-items:center;
+    flex-direction:column;
+  }
+
+  .traffic{
+    width: calc(var(--size) * 0.7);
+    background:var(--box);
+    padding:18px;
+    border-radius:20px;
+    box-shadow: 0 8px 30px var(--off-shadow), inset 0 -6px 18px rgba(0,0,0,0.6);
+  }
+
+  .lens{
+    width:100%;
+    height: calc(var(--size) * 0.5);
+    margin: 10px 0;
+    border-radius:50%;
+    background: #222;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition: background 350ms ease, box-shadow 350ms ease, transform 200ms ease;
+  }
+
+  /* Off-state dim colors */
+  .lens.red.off{ background:#3d0101; box-shadow:none; }
+  .lens.yellow.off{ background:#2b2b00; }
+  .lens.green.off{ background:#002400; }
+
+  /* On-state bright colors + glow */
+  .lens.red.on{
+    background: linear-gradient(180deg,#ff3b3b,#b80000);
+    box-shadow: 0 0 30px rgba(255,59,59,0.75), inset 0 -6px 12px rgba(0,0,0,0.3);
+    transform: translateY(-2px);
+  }
+
+  /* Yellow light blink animation */
+@keyframes yellowBlink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0.3; }
+}
+
+/* Apply blink when yellow light is ON */
+.lens.yellow.on {
+  animation: yellowBlink 1s infinite;
+}
+  .lens.yellow.on{
+    background: linear-gradient(180deg,#ffe25a,#f0ec00);
+    box-shadow: 0 0 28px rgba(255,226,90,0.72), inset 0 -6px 12px rgba(0,0,0,0.28);
+    transform: translateY(-2px);
+
+  }
+  .lens.green.on{
+    background: linear-gradient(180deg,#6ef07a,#04e429);
+    box-shadow: 0 0 32px rgba(110,240,122,0.72), inset 0 -6px 12px rgba(0,0,0,0.28);
+    transform: translateY(-2px);
+  }
+
+  /* Status text / timer */
+  .status{
+    text-align:center;
+    font-size:14px;
+    margin-top:8px;
+    opacity:0.9;
+  }
+
+  .timer{
+    font-weight:700;
+    font-size:18px;
+    letter-spacing:0.4px;
+  }
+
+  /* small controls */
+  .controls{
+    display:flex;
+    gap:8px;
+    margin-top:8px;
+  }
+  button{
+    padding:8px 12px;
+    border-radius:8px;
+    border:0;
+    cursor:pointer;
+    background:#0b7a8f;
+    color:white;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+  }
+
+  button.secondary {
+  background: #444;
+}
+
+button:hover {
+  background: #0e93a9; /* lighter shade */
+  transform: scale(1.05); /* slightly larger */
+  box-shadow: 0 6px 14px rgba(0, 255, 255, 0.5); /* glow effect */
+}
+
+button.secondary:hover {
+  background: #555;
+  box-shadow: 0 6px 14px rgba(255, 255, 255, 0.4);
+}
+
+
+  button.secondary{ background:#444; }
+  small.note{display:block; margin-top:6px; opacity:0.8;}
+</style>
+</head>
+<body>
+  <div class="traffic-wrap">
+    <div class="traffic" aria-label="Traffic light">
+      <div id="red"    class="lens red off"    role="img" aria-label="red light"></div>
+      <div id="yellow" class="lens yellow off" role="img" aria-label="yellow light"></div>
+      <div id="green"  class="lens green off"  role="img" aria-label="green light"></div>
+    </div>
+
+    <div class="status">
+      <div>State: <span id="stateName">—</span></div>
+      <div class="timer" id="countdown">--:--</div>
+      <div class="controls">
+        <button id="startBtn">Start</button>
+        <button id="pauseBtn" class="secondary">Pause</button>
+        <button id="resetBtn" class="secondary">Reset</button>
+      </div>
+      <small class="note">Total cycle = <strong>2 minutes (120s)</strong></small>
+    </div>
+  </div>
+
+<script>
+/*
+ Simple traffic light cycle with total cycle = 120 seconds (2 minutes).
+ Durations are in seconds and can be edited below.
+*/
+
+const durations = {
+  green: 60,   // seconds
+  yellow: 10,  // seconds
+  red: 60      // seconds
+};
+// Ensure they sum to 120 for a 2-minute total; if not, the script will normalize.
+const TOTAL = 120;
+
+const elems = {
+  red: document.getElementById('red'),
+  yellow: document.getElementById('yellow'),
+  green: document.getElementById('green'),
+  stateName: document.getElementById('stateName'),
+  countdown: document.getElementById('countdown'),
+  startBtn: document.getElementById('startBtn'),
+  pauseBtn: document.getElementById('pauseBtn'),
+  resetBtn: document.getElementById('resetBtn')
+};
+
+let sequence = ['green','yellow','red'];
+let normalized = normalizeDurations(durations, TOTAL); // ensures sums to TOTAL
+let timers = {}; // store individual durations
+let index = 0;
+let remaining = normalized[ sequence[index] ];
+let running = false;
+let ticker = null;
+let cycleStartTimestamp = null;
+
+function normalizeDurations(obj, total){
+  const sum = (obj.green||0) + (obj.yellow||0) + (obj.red||0);
+  if(sum === total) return {...obj};
+  // scale proportional if sum > 0
+  if(sum > 0){
+    return {
+      green: Math.max(1, Math.round(obj.green * total / sum)),
+      yellow: Math.max(1, Math.round(obj.yellow * total / sum)),
+      red: Math.max(1, Math.round(obj.red * total / sum))
+    };
+  }
+  // fallback to equal thirds
+  return {green: Math.floor(total/3), yellow: Math.floor(total/3), red: total - 2*Math.floor(total/3)};
+}
+
+// prepare timers
+timers = {...normalized};
+
+// Ensure the order of sequence fits timers and set initial remaining time
+index = 0;
+remaining = timers[ sequence[index] ];
+updateUI();
+
+// Start / Pause / Reset behavior
+elems.startBtn.addEventListener('click', () => {
+  if(!running) startCycle();
+});
+elems.pauseBtn.addEventListener('click', () => {
+  if(running) pauseCycle(); else startCycle();
+});
+elems.resetBtn.addEventListener('click', resetCycle);
+
+function startCycle(){
+  running = true;
+  elems.startBtn.disabled = true;
+  elems.pauseBtn.textContent = 'Pause';
+  cycleStartTimestamp = Date.now();
+  // use setInterval for second ticks
+  if(!ticker){
+    ticker = setInterval(tick, 1000);
+  }
+}
+
+function pauseCycle(){
+  running = false;
+  elems.startBtn.disabled = false;
+  elems.pauseBtn.textContent = 'Resume';
+  if(ticker){ clearInterval(ticker); ticker = null; }
+}
+
+function resetCycle(){
+  pauseCycle();
+  index = 0;
+  remaining = timers[ sequence[index] ];
+  activateState(sequence[index]);
+  updateUI();
+}
+
+function tick(){
+  if(!running) return;
+  remaining--;
+  if(remaining <= 0){
+    // move to next state
+    index = (index + 1) % sequence.length;
+    remaining = timers[ sequence[index] ];
+    activateState(sequence[index]);
+  }
+  updateUI();
+}
+
+function activateState(state){
+  // clear all
+  elems.red.classList.remove('on'); elems.red.classList.add('off');
+  elems.yellow.classList.remove('on'); elems.yellow.classList.add('off');
+  elems.green.classList.remove('on'); elems.green.classList.add('off');
+
+  // set active
+  elems[state].classList.remove('off');
+  elems[state].classList.add('on');
+  elems.stateName.textContent = state.toUpperCase();
+}
+
+// display mm:ss
+function formatTime(s){
+  const mm = Math.floor(s / 60);
+  const ss = s % 60;
+  return `${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}`;
+}
+
+function updateUI(){
+  elems.countdown.textContent = formatTime(remaining);
+  elems.stateName.textContent = sequence[index].toUpperCase();
+  // initial activation (ensure correct class on load)
+  activateState(sequence[index]);
+}
+
+// Initialize: show initial state but don't start automatically
+activateState(sequence[index]);
+elems.countdown.textContent = formatTime(remaining);
+
+</script>
+</body>
+</html>
